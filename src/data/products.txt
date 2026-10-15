@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "name": "iPhone 17",
+    "price": 24990000,
+    "category": "Phone"
+  },
+  {
+    "id": 2,
+    "name": "Samsung Galaxy S25",
+    "price": 21990000,
+    "category": "Phone"
+  },
+  {
+    "id": 4,
+    "name": "Asus ROG",
+    "price": 100990000,
+    "category": "Laptop"
+  },
+  {
+    "id": 5,
+    "name": "iPhone 18",
+    "price": 30990000,
+    "category": "Phone"
+  }
+]
