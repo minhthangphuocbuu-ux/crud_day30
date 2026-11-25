@@ -1,5 +1,5 @@
 const { ObjectId } = require("mongodb");
-const dataSource = require("../datasource/dataSource");
+const dataSource = require("../data-sources/mongo-data-source");
 const AppError = require("../utils/AppError");
 
 async function create({ code, customerId, items }) {

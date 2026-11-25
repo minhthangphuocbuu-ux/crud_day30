@@ -54,6 +54,15 @@ const schemas = {
             status: { bsonType: "string", enum: ["pending", "paid", "cancelled"] },
             createdAt: { bsonType: "date" }
         }
+    },
+    counters: {
+        bsonType: "object",
+        required: ["_id", "seq"],
+        additionalProperties: false,
+        properties: {
+            _id: { bsonType: "string" },
+            seq: { bsonType: ["int", "long"], minimum: 0 }
+        }
     }
 };
 

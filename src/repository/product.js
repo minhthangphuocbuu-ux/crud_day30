@@ -1,28 +1,20 @@
-const dataSource = require("../datasource/dataSource");
+const dataSource = require("../data-sources/mongo-data-source");
 
 const COLLECTION_NAME = "products";
 const PUBLIC_PROJECTION = { _id: 0, cost: 0 };
 const ACTIVE_PRODUCT = { deleted: { $ne: true } };
 
-async function findPage({ filter, page, limit, sort, order }) {
+async function findAll({ filter = {}, page = 1, limit, sort = "id", order = 1 } = {}) {
     const products = await dataSource.collection(COLLECTION_NAME);
-    const query = { ...ACTIVE_PRODUCT, ...filter };
-    const [items, total] = await Promise.all([
-        products.find(query, { projection: PUBLIC_PROJECTION })
-            .sort({ [sort]: order })
-            .skip((page - 1) * limit)
-            .limit(limit)
-            .toArray(),
-        products.countDocuments(query)
-    ]);
+    let cursor = products.find(
+        { ...ACTIVE_PRODUCT, ...filter },
+        { projection: PUBLIC_PROJECTION }
+    ).sort({ [sort]: order });
 
-    return {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-        products: items
-    };
+    if (limit !== undefined) {
+        cursor = cursor.skip((page - 1) * limit).limit(limit);
+    }
+    return cursor.toArray();
 }
 
 async function findById(id) {
@@ -33,24 +25,51 @@ async function findById(id) {
     );
 }
 
+async function nextProductId(products) {
+    const counters = await dataSource.collection("counters");
+    let counter = await counters.findOne({ _id: "product" }, { projection: { _id: 1 } });
+
+    if (!counter) {
+        const lastProduct = await products.find({}, { projection: { _id: 0, id: 1 } })
+            .sort({ id: -1 })
+            .limit(1)
+            .next();
+        try {
+            await counters.insertOne({ _id: "product", seq: lastProduct ? lastProduct.id : 0 });
+        } catch (error) {
+            if (error.code !== 11000) throw error;
+        }
+    }
+
+    counter = await counters.findOneAndUpdate(
+        { _id: "product" },
+        { $inc: { seq: 1 } },
+        { returnDocument: "after", includeResultMetadata: false }
+    );
+    if (!counter) throw new Error("Could not allocate a product id");
+    return counter.seq;
+}
+
+function toPublicProduct(product) {
+    const { _id, cost, ...publicProduct } = product;
+    return publicProduct;
+}
+
 async function create(product) {
     const products = await dataSource.collection(COLLECTION_NAME);
-    const lastProduct = await products.find({}, { projection: { _id: 0, id: 1 } })
-        .sort({ id: -1 })
-        .limit(1)
-        .next();
     const newProduct = {
-        id: lastProduct ? lastProduct.id + 1 : 1,
+        id: await nextProductId(products),
         ...product,
+        stock: product.stock ?? 0,
+        cost: product.cost ?? 0,
         deleted: false
     };
 
     await products.insertOne(newProduct);
-    const { cost, ...publicProduct } = newProduct;
-    return publicProduct;
+    return toPublicProduct(newProduct);
 }
 
-async function patch(id, fields) {
+async function update(id, fields) {
     const products = await dataSource.collection(COLLECTION_NAME);
     const result = await products.updateOne(
         { id, ...ACTIVE_PRODUCT },
@@ -58,6 +77,10 @@ async function patch(id, fields) {
     );
     if (result.matchedCount === 0) return null;
     return findById(id);
+}
+
+async function patch(id, fields) {
+    return update(id, fields);
 }
 
 async function changeStock(id, change) {
@@ -84,4 +107,4 @@ async function softDelete(id) {
     return result.matchedCount > 0 ? { id, deleted: true } : null;
 }
 
-module.exports = { findPage, findById, create, patch, changeStock, softDelete };
+module.exports = { findAll, findById, create, update, patch, changeStock, softDelete };

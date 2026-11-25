@@ -127,7 +127,12 @@ function validateCreateBody(body) {
         const error = validateText(body[field], field);
         if (error) return invalid(error);
     }
-    for (const field of ["price", "cost", "stock"]) {
+    const priceError = validateNumber(body.price, "price", { integer: true });
+    if (priceError) return invalid(priceError);
+    if (body.price > 2147483647) return invalid("price must not exceed 2147483647");
+
+    for (const field of ["cost", "stock"]) {
+        if (body[field] === undefined) continue;
         const error = validateNumber(body[field], field, { integer: true });
         if (error) return invalid(error);
         if (body[field] > 2147483647) return invalid(`${field} must not exceed 2147483647`);
@@ -138,8 +143,31 @@ function validateCreateBody(body) {
             name: body.name.trim(),
             category: body.category.trim(),
             price: body.price,
-            stock: body.stock,
-            cost: body.cost
+            stock: body.stock ?? 0,
+            cost: body.cost ?? 0
+        }
+    };
+}
+
+function validatePutBody(body) {
+    if (!validateObjectBody(body)) return invalid("Body must be a JSON object");
+    const allowed = new Set(["name", "category", "price"]);
+    const unexpected = Object.keys(body).find(field => !allowed.has(field));
+    if (unexpected) return invalid(`Field ${unexpected} is not allowed`);
+
+    for (const field of ["name", "category"]) {
+        const error = validateText(body[field], field);
+        if (error) return invalid(error);
+    }
+    const priceError = validateNumber(body.price, "price", { integer: true });
+    if (priceError) return invalid(priceError);
+    if (body.price > 2147483647) return invalid("price must not exceed 2147483647");
+
+    return {
+        value: {
+            name: body.name.trim(),
+            category: body.category.trim(),
+            price: body.price
         }
     };
 }
@@ -174,12 +202,14 @@ function parseProductId(rawId) {
 }
 
 async function getAll(req, res) {
+    const limit = parseInteger(req.query.get("limit"), "limit", null, Number.MAX_SAFE_INTEGER);
+    if (limit.error) return sendJson(res, 400, { message: limit.error });
     const page = parseInteger(req.query.get("page"), "page", 1, Number.MAX_SAFE_INTEGER);
     if (page.error) return sendJson(res, 400, { message: page.error });
-
-    const limit = parseInteger(req.query.get("limit"), "limit", 10, 100);
-    if (limit.error) return sendJson(res, 400, { message: limit.error });
-    if (!Number.isSafeInteger((page.value - 1) * limit.value)) {
+    if (req.query.has("page") && limit.value === null) {
+        return sendJson(res, 400, { message: "limit is required when page is specified" });
+    }
+    if (limit.value !== null && !Number.isSafeInteger((page.value - 1) * limit.value)) {
         return sendJson(res, 400, { message: "Invalid page" });
     }
 
@@ -194,10 +224,10 @@ async function getAll(req, res) {
     const parsedFilter = parseFilter(req.query);
     if (parsedFilter.error) return sendJson(res, 400, { message: parsedFilter.error });
 
-    const result = await productRepository.findPage({
+    const result = await productRepository.findAll({
         filter: parsedFilter.value,
         page: page.value,
-        limit: limit.value,
+        limit: limit.value === null ? undefined : limit.value,
         sort,
         order: orderName === "asc" ? 1 : -1
     });
@@ -206,7 +236,7 @@ async function getAll(req, res) {
 
 async function getById(req, res) {
     const id = parseProductId(req.params.id);
-    if (id === null) return sendJson(res, 400, { message: "Invalid product id" });
+    if (id === null) return sendJson(res, 404, { message: "Product not found" });
 
     const product = await productRepository.findById(id);
     if (!product) return sendJson(res, 404, { message: "Product not found" });
@@ -221,9 +251,21 @@ async function create(req, res) {
     return sendJson(res, 201, product);
 }
 
+async function update(req, res) {
+    const id = parseProductId(req.params.id);
+    if (id === null) return sendJson(res, 404, { message: "Product not found" });
+
+    const validated = validatePutBody(req.body);
+    if (validated.error) return sendJson(res, 400, { message: validated.error });
+
+    const product = await productRepository.update(id, validated.value);
+    if (!product) return sendJson(res, 404, { message: "Product not found" });
+    return sendJson(res, 200, product);
+}
+
 async function patch(req, res) {
     const id = parseProductId(req.params.id);
-    if (id === null) return sendJson(res, 400, { message: "Invalid product id" });
+    if (id === null) return sendJson(res, 404, { message: "Product not found" });
 
     const validated = validatePatchBody(req.body);
     if (validated.error) return sendJson(res, 400, { message: validated.error });
@@ -235,7 +277,7 @@ async function patch(req, res) {
 
 async function changeStock(req, res) {
     const id = parseProductId(req.params.id);
-    if (id === null) return sendJson(res, 400, { message: "Invalid product id" });
+    if (id === null) return sendJson(res, 404, { message: "Product not found" });
     if (!validateObjectBody(req.body)) return sendJson(res, 400, { message: "Body must be a JSON object" });
 
     const { change } = req.body;
@@ -253,11 +295,12 @@ async function changeStock(req, res) {
 
 async function remove(req, res) {
     const id = parseProductId(req.params.id);
-    if (id === null) return sendJson(res, 400, { message: "Invalid product id" });
+    if (id === null) return sendJson(res, 404, { message: "Product not found" });
 
     const product = await productRepository.softDelete(id);
     if (!product) return sendJson(res, 404, { message: "Product not found" });
-    return sendJson(res, 200, product);
+    res.statusCode = 204;
+    return res.end();
 }
 
-module.exports = { getAll, getById, create, patch, changeStock, remove };
+module.exports = { getAll, getById, create, update, patch, changeStock, remove };

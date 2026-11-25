@@ -1,4 +1,9 @@
 {
+  "scripts": {
+    "start": "node server.js",
+    "setup-db": "node src/data-sources/setup-database.js",
+    "migrate": "node src/scripts/migrate.js"
+  },
   "dependencies": {
     "mongodb": "^7.9.0"
   }

@@ -1,5 +1,5 @@
 const { MongoClient } = require("mongodb");
-const { MONGO_URL, MONGO_SETUP_URL, DB_NAME } = require("./config");
+const { MONGODB_URI, MONGODB_SETUP_URI, MONGODB_DB } = require("./config");
 const schemas = require("./schemas");
 
 async function configureCollection(db, name, schema) {
@@ -22,13 +22,13 @@ async function configureCollection(db, name, schema) {
 }
 
 async function setupDatabase() {
-    const uri = MONGO_SETUP_URL || MONGO_URL;
-    if (!uri) throw new Error("Set MONGO_SETUP_URL or MONGO_URL in the project .env file");
+    const uri = MONGODB_SETUP_URI || MONGODB_URI;
+    if (!uri) throw new Error("Set MONGODB_SETUP_URI or MONGODB_URI in the project .env file");
 
     const client = new MongoClient(uri);
     try {
         await client.connect();
-        const db = client.db(DB_NAME);
+        const db = client.db(MONGODB_DB);
 
         for (const [name, schema] of Object.entries(schemas)) {
             await configureCollection(db, name, schema);
@@ -51,7 +51,18 @@ async function setupDatabase() {
             { name: "idx_orders_status_createdAt" }
         );
 
-        console.log(`Database schemas and indexes are ready: ${DB_NAME}`);
+        const lastProduct = await db.collection("products")
+            .find({}, { projection: { _id: 0, id: 1 } })
+            .sort({ id: -1 })
+            .limit(1)
+            .next();
+        await db.collection("counters").updateOne(
+            { _id: "product" },
+            { $max: { seq: lastProduct ? lastProduct.id : 0 } },
+            { upsert: true }
+        );
+
+        console.log(`Database schemas and indexes are ready: ${MONGODB_DB}`);
     } finally {
         await client.close();
     }

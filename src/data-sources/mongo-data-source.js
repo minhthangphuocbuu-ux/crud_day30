@@ -1,5 +1,5 @@
 const { MongoClient } = require("mongodb");
-const { MONGO_URL, DB_NAME } = require("./config");
+const { MONGODB_URI, MONGODB_DB } = require("./config");
 
 let client;
 let database;
@@ -7,17 +7,16 @@ let connection;
 
 async function connect() {
     if (database) return database;
-    if (!MONGO_URL) {
-        throw new Error("MONGO_URL is not configured. Add it to the project .env file.");
+    if (!MONGODB_URI) {
+        throw new Error("MONGODB_URI is not configured in the project .env file");
     }
 
     if (!connection) {
-        client = new MongoClient(MONGO_URL);
+        client = new MongoClient(MONGODB_URI);
         connection = client.connect()
-            .then(async () => {
-                const db = client.db(DB_NAME);
-                database = db;
-                console.log(`Connected to MongoDB database: ${DB_NAME}`);
+            .then(() => {
+                database = client.db(MONGODB_DB);
+                console.log(`Connected to MongoDB database: ${MONGODB_DB}`);
                 return database;
             })
             .catch(async error => {
@@ -33,8 +32,12 @@ async function connect() {
     return connection;
 }
 
+async function getDb() {
+    return connect();
+}
+
 async function collection(name) {
-    const db = await connect();
+    const db = await getDb();
     return db.collection(name);
 }
 
@@ -48,4 +51,12 @@ async function withTransaction(callback) {
     }
 }
 
-module.exports = { connect, collection, withTransaction };
+async function close() {
+    if (connection) await connection.catch(() => {});
+    if (client) await client.close();
+    client = undefined;
+    database = undefined;
+    connection = undefined;
+}
+
+module.exports = { connect, getDb, collection, withTransaction, close };

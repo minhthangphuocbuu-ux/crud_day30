@@ -1,4 +1,4 @@
-const dataSource = require("../datasource/dataSource");
+const dataSource = require("../data-sources/mongo-data-source");
 
 async function create(customer) {
     const customers = await dataSource.collection("customers");

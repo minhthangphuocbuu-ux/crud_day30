@@ -59,6 +59,13 @@ async function handleRequest(req, res) {
             return await controller.create(req, res);
         }
 
+        if (method === "PUT" && productRoute) {
+            if (!await apply(req, res, [auth, parseBody])) return;
+
+            req.params = { id: productRoute[1] };
+            return await controller.update(req, res);
+        }
+
         if (method === "POST" && pathname === "/customers") {
             if (!await apply(req, res, [auth, parseBody])) return;
             return await customerController.create(req, res);
