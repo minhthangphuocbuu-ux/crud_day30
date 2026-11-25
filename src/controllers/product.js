@@ -202,6 +202,8 @@ function parseProductId(rawId) {
 }
 
 async function getAll(req, res) {
+    if (req.query.get("limit") === "0") return sendJson(res, 200, []);
+
     const limit = parseInteger(req.query.get("limit"), "limit", null, Number.MAX_SAFE_INTEGER);
     if (limit.error) return sendJson(res, 400, { message: limit.error });
     const page = parseInteger(req.query.get("page"), "page", 1, Number.MAX_SAFE_INTEGER);
